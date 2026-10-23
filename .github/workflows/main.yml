@@ -12,45 +12,50 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build Windows desktop app
+    name: Build ALTREX CODE Windows EXE
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.9.0
+      - name: Extract application source from uploaded ZIP
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'ALTREX-CODE-READY.zip'
+          if (-not (Test-Path $archive)) {
+            throw 'ALTREX-CODE-READY.zip is missing from the repository root.'
+          }
+          $source = Join-Path $env:RUNNER_TEMP 'altrex-source'
+          if (Test-Path $source) { Remove-Item $source -Recurse -Force }
+          Expand-Archive -LiteralPath $archive -DestinationPath $source -Force
+          Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $env:GITHUB_WORKSPACE -Recurse -Force
+          }
+          if (-not (Test-Path (Join-Path $env:GITHUB_WORKSPACE 'package.json'))) {
+            throw 'package.json was not extracted to the repository root.'
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
+          package-manager-cache: false
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
+        run: npm install
 
       - name: Run tests
-        run: pnpm test
+        run: npm test
 
-      - name: Build application
-        run: pnpm build
+      - name: Build installer and portable EXE
+        run: npm run dist
 
-      - name: Package Windows EXE
-        run: pnpm dist:win
-
-      - name: Upload Windows installers
+      - name: Upload Windows EXE files
         uses: actions/upload-artifact@v4
         with:
           name: ALTREX-CODE-Windows
           path: |
-            **/*.exe
-            **/*.msi
-            **/*.zip
+            dist/*.exe
           if-no-files-found: error
           retention-days: 14
